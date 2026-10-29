@@ -1,8 +1,15 @@
+import json
+import os
+from typing import Optional
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
+from google import genai
+from google.genai import types
+from google.genai.errors import APIError
 from prophet import Prophet
 
 from db_connect import DatabaseConnectionError, fetch_walmart_sales
@@ -24,8 +31,9 @@ FACTORS = {
     "Unemployment": "Unemployment rate (%)",
 }
 COLORS = {
-    "blue": "#3867f4",
-    "teal": "#12a594",
+    "primary": "#FF4B4B",
+    "blue": "#416AAF",
+    "secondary": "#3E4675",
 }
 
 st.set_page_config(
@@ -37,15 +45,15 @@ st.set_page_config(
 
 dark_mode = st.sidebar.toggle("🌙  Dark mode", value=False, key="dark_mode")
 THEME = {
-    "ink": "#eef3ff" if dark_mode else "#17233c",
-    "muted": "#a5b2ca" if dark_mode else "#596780",
-    "grid": "#34415a" if dark_mode else "#e9edf5",
-    "surface": "#1b263b" if dark_mode else "#ffffff",
-    "canvas": "#0d1526" if dark_mode else "#f2f5fb",
-    "border": "#34415a" if dark_mode else "#dde4f0",
-    "input_border": "#46536c" if dark_mode else "#cbd5e1",
-    "header": "rgba(13, 21, 38, 0.80)" if dark_mode else "rgba(242, 245, 251, 0.80)",
-    "glass": "rgba(27, 38, 59, 0.72)" if dark_mode else "rgba(255, 255, 255, 0.78)",
+    "ink": "#eef3ff" if dark_mode else "#ffffff",
+    "muted": "#a5b2ca" if dark_mode else "#e3e9f5",
+    "grid": "#34415a" if dark_mode else "rgba(255, 255, 255, 0.22)",
+    "surface": "#1b263b" if dark_mode else COLORS["secondary"],
+    "canvas": "#0d1526" if dark_mode else COLORS["blue"],
+    "border": "#34415a" if dark_mode else "rgba(255, 255, 255, 0.24)",
+    "input_border": "#46536c" if dark_mode else "rgba(255, 255, 255, 0.46)",
+    "header": "rgba(13, 21, 38, 0.80)" if dark_mode else "rgba(65, 106, 175, 0.92)",
+    "glass": "rgba(27, 38, 59, 0.92)" if dark_mode else "rgba(62, 70, 117, 0.94)",
     "shadow": "rgba(0, 0, 0, 0.35)" if dark_mode else "rgba(40, 70, 140, 0.12)",
     # Toggle colors: the "off" track must stand out against the sidebar surface.
     "toggle_off": "#64748b" if dark_mode else "#8a97ad",
@@ -166,12 +174,60 @@ st.markdown(
         border-color: #3867f4 !important;
         box-shadow: 0 0 0 3px rgba(56, 103, 244, .18);
     }
-    [data-baseweb="popover"], [data-baseweb="menu"], [role="listbox"] {
+    [data-baseweb="popover"],
+    [data-baseweb="popover"] > div,
+    [data-baseweb="menu"],
+    [role="listbox"],
+    [data-testid="stMainMenuPopover"] {
         background-color: __SURFACE__ !important;
         border-color: __BORDER__ !important;
-    }
-    [data-baseweb="popover"] *, [data-baseweb="menu"] *, [role="listbox"] * {
         color: __INK__ !important;
+    }
+    [data-baseweb="popover"] *,
+    [data-baseweb="menu"] *,
+    [role="listbox"] *,
+    [data-testid="stMainMenuPopover"] * {
+        color: __INK__ !important;
+    }
+    [data-baseweb="calendar"],
+    [data-baseweb="calendar"] table,
+    [data-baseweb="calendar"] [role="grid"],
+    [data-baseweb="calendar"] [role="row"],
+    [data-baseweb="calendar"] [role="gridcell"] {
+        background-color: __SURFACE__ !important;
+        color: __INK__ !important;
+    }
+    [data-baseweb="calendar"] button {
+        background-color: transparent !important;
+        color: __INK__ !important;
+    }
+    [data-baseweb="calendar"] button:hover {
+        background-color: __BORDER__ !important;
+    }
+    [data-baseweb="calendar"] [aria-selected="true"],
+    [data-baseweb="calendar"] [aria-selected="true"] button {
+        background: linear-gradient(135deg, #3867f4, #12a594) !important;
+        color: #ffffff !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stChatInput"] textarea {
+        background: __SURFACE__ !important;
+        border-color: __INPUT_BORDER__ !important;
+        color: __INK__ !important;
+        -webkit-text-fill-color: __INK__ !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stChatInput"] button {
+        background: linear-gradient(135deg, #3867f4, #12a594) !important;
+        color: #ffffff !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stChatInput"] button svg {
+        fill: #ffffff !important;
+        color: #ffffff !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stChatMessage"] {
+        background: __GLASS__ !important;
+        border: 0 !important;
+        border-radius: 12px;
+        padding: 8px 10px;
     }
     :is([data-testid="stAppViewContainer"], [data-testid="stSidebar"]) [data-baseweb="select"] input,
     :is([data-testid="stAppViewContainer"], [data-testid="stSidebar"]) [data-baseweb="input"] input {
@@ -352,7 +408,13 @@ st.markdown(
     .replace("__BORDER__", THEME["border"])
     .replace("__INPUT_BORDER__", THEME["input_border"])
     .replace("__TOGGLE_OFF__", THEME["toggle_off"])
-    .replace("__TOGGLE_BORDER__", THEME["toggle_border"]),
+    .replace("__TOGGLE_BORDER__", THEME["toggle_border"])
+    .replace("#3867f4", COLORS["primary"])
+    .replace("#12a594", COLORS["blue"])
+    .replace("rgba(56,103,244", "rgba(255,75,75")
+    .replace("rgba(18,165,148", "rgba(65,106,175")
+    .replace("rgba(56, 103, 244", "rgba(255, 75, 75")
+    .replace("rgba(18, 165, 148", "rgba(65, 106, 175"),
     unsafe_allow_html=True,
 )
 
@@ -404,6 +466,166 @@ def format_currency(value: float) -> str:
     if abs(value) >= 1_000_000:
         return f"${value / 1_000_000:,.2f}M"
     return f"${value:,.0f}"
+
+
+def query_walmart_sales(
+    sales_data: pd.DataFrame,
+    operation: str,
+    store: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict[str, object]:
+    if operation not in {"summary", "top_stores", "weekly_totals", "records"}:
+        raise ValueError(f"Unsupported sales query operation: {operation}")
+    if not 1 <= limit <= 100:
+        raise ValueError("limit must be between 1 and 100.")
+    if offset < 0:
+        raise ValueError("offset must be zero or greater.")
+
+    filtered = sales_data
+    if store is not None:
+        filtered = filtered.loc[filtered["Store"] == store]
+    for boundary_name, boundary in (
+        ("start_date", start_date),
+        ("end_date", end_date),
+    ):
+        if boundary is not None:
+            try:
+                date_value = pd.Timestamp(boundary)
+            except (TypeError, ValueError) as error:
+                raise ValueError(f"{boundary_name} must be a valid date.") from error
+            if boundary_name == "start_date":
+                filtered = filtered.loc[filtered["Date"] >= date_value]
+            else:
+                filtered = filtered.loc[filtered["Date"] <= date_value]
+
+    if operation == "summary":
+        if filtered.empty:
+            return {"row_count": 0, "message": "No matching sales records."}
+        sales_correlations = {}
+        for column in ("Temperature", "Fuel_Price", "CPI", "Unemployment"):
+            correlation = filtered["Weekly_Sales"].corr(filtered[column])
+            sales_correlations[column] = (
+                float(correlation) if pd.notna(correlation) else None
+            )
+        holiday_sales = filtered.loc[
+            filtered["Holiday_Flag"] == 1, "Weekly_Sales"
+        ]
+        non_holiday_sales = filtered.loc[
+            filtered["Holiday_Flag"] == 0, "Weekly_Sales"
+        ]
+        return {
+            "row_count": len(filtered),
+            "date_range": [
+                filtered["Date"].min().strftime("%Y-%m-%d"),
+                filtered["Date"].max().strftime("%Y-%m-%d"),
+            ],
+            "stores": sorted(int(value) for value in filtered["Store"].unique()),
+            "total_weekly_sales": float(filtered["Weekly_Sales"].sum()),
+            "average_weekly_sales": float(filtered["Weekly_Sales"].mean()),
+            "holiday_rows": int(filtered["Holiday_Flag"].sum()),
+            "non_holiday_rows": int((filtered["Holiday_Flag"] == 0).sum()),
+            "average_sales_by_week_type": {
+                "holiday": (
+                    float(holiday_sales.mean()) if not holiday_sales.empty else None
+                ),
+                "non_holiday": (
+                    float(non_holiday_sales.mean())
+                    if not non_holiday_sales.empty
+                    else None
+                ),
+            },
+            "average_market_factors": {
+                column: float(filtered[column].mean())
+                for column in ("Temperature", "Fuel_Price", "CPI", "Unemployment")
+            },
+            "sales_correlations_with_market_factors": sales_correlations,
+        }
+
+    if operation == "top_stores":
+        grouped = (
+            filtered.groupby("Store", as_index=False)["Weekly_Sales"]
+            .sum()
+            .sort_values("Weekly_Sales", ascending=False)
+        )
+        return {
+            "total_stores": len(grouped),
+            "stores": json.loads(
+                grouped.iloc[offset : offset + limit].to_json(orient="records")
+            ),
+        }
+
+    if operation == "weekly_totals":
+        grouped = (
+            filtered.groupby("Date", as_index=False)["Weekly_Sales"]
+            .sum()
+            .sort_values("Date")
+        )
+        return {
+            "total_weeks": len(grouped),
+            "weeks": json.loads(
+                grouped.iloc[offset : offset + limit].to_json(
+                    orient="records", date_format="iso"
+                )
+            ),
+        }
+
+    rows = filtered.iloc[offset : offset + limit]
+    return {
+        "total_matching_rows": len(filtered),
+        "offset": offset,
+        "limit": limit,
+        "records": json.loads(rows.to_json(orient="records", date_format="iso")),
+    }
+
+
+WALMART_SALES_TOOL = types.Tool(
+    function_declarations=[
+        types.FunctionDeclaration(
+            name="query_walmart_sales",
+            description=(
+                "Read the Walmart sales table. Use this for factual questions about "
+                "sales records, stores, dates, holidays, or market factors."
+            ),
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "operation": types.Schema(
+                        type=types.Type.STRING,
+                        enum=["summary", "top_stores", "weekly_totals", "records"],
+                        description=(
+                            "summary for metrics, top_stores for ranked store totals, "
+                            "weekly_totals for totals by date, records for raw rows."
+                        ),
+                    ),
+                    "store": types.Schema(
+                        type=types.Type.INTEGER,
+                        description="Optional store number filter.",
+                    ),
+                    "start_date": types.Schema(
+                        type=types.Type.STRING,
+                        description="Optional inclusive date filter in YYYY-MM-DD format.",
+                    ),
+                    "end_date": types.Schema(
+                        type=types.Type.STRING,
+                        description="Optional inclusive date filter in YYYY-MM-DD format.",
+                    ),
+                    "limit": types.Schema(
+                        type=types.Type.INTEGER,
+                        description="Maximum rows to return, from 1 to 100.",
+                    ),
+                    "offset": types.Schema(
+                        type=types.Type.INTEGER,
+                        description="Number of matching rows to skip for pagination.",
+                    ),
+                },
+                required=["operation"],
+            ),
+        )
+    ]
+)
 
 
 def style_figure(figure: go.Figure, height: int = 360) -> go.Figure:
@@ -465,6 +687,112 @@ forecast_horizon = st.sidebar.slider(
 selected_factor = st.sidebar.selectbox(
     "Market factor", options=list(FACTORS), format_func=FACTORS.get
 )
+
+st.sidebar.markdown("### ♊ Gemini assistant")
+with st.sidebar.container(height=260, border=False):
+    for message in st.session_state.get("gemini_messages", []):
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+if "gemini_messages" not in st.session_state:
+    st.session_state.gemini_messages = []
+
+if prompt := st.sidebar.chat_input("Ask Gemini anything...", key="gemini_chat_input"):
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+    except (KeyError, FileNotFoundError):
+        api_key = None
+    api_key = api_key or os.getenv("GEMINI_API_KEY")
+
+    if not api_key:
+        st.sidebar.error(
+            "Gemini is not configured. Add GEMINI_API_KEY to Streamlit secrets "
+            "or the environment."
+        )
+    else:
+        contents = [
+            types.Content(
+                role="user" if message["role"] == "user" else "model",
+                parts=[types.Part(text=message["content"])],
+            )
+            for message in st.session_state.gemini_messages
+        ]
+        contents.append(types.Content(role="user", parts=[types.Part(text=prompt)]))
+        generation_config = types.GenerateContentConfig(
+            system_instruction=(
+                "You are the Walmart sales dashboard assistant. The full loaded "
+                "walmart_sales table is available through the query_walmart_sales "
+                "tool. Use that tool for factual claims about the data, and never "
+                "invent results. The tool is read-only and does not expose database "
+                "credentials or source code. Clearly state when results are paginated."
+            ),
+            tools=[WALMART_SALES_TOOL],
+        )
+
+        try:
+            with st.sidebar:
+                with st.spinner("Gemini is thinking..."):
+                    with genai.Client(api_key=api_key) as client:
+                        for _ in range(5):
+                            response = client.models.generate_content(
+                                model="gemini-3.1-flash-lite",
+                                contents=contents,
+                                config=generation_config,
+                            )
+                            function_calls = response.function_calls or []
+                            if not function_calls:
+                                break
+
+                            function_responses = []
+                            for function_call in function_calls:
+                                if function_call.name != "query_walmart_sales":
+                                    result = {"error": "Unsupported database operation."}
+                                else:
+                                    try:
+                                        result = query_walmart_sales(
+                                            sales,
+                                            **(function_call.args or {}),
+                                        )
+                                    except (TypeError, ValueError) as error:
+                                        result = {"error": str(error)}
+                                function_responses.append(
+                                    types.Part.from_function_response(
+                                        name=function_call.name,
+                                        response=result,
+                                    )
+                                )
+                            contents.extend(
+                                [
+                                    response.candidates[0].content,
+                                    types.Content(
+                                        role="tool",
+                                        parts=function_responses,
+                                    ),
+                                ]
+                            )
+                        else:
+                            st.sidebar.error(
+                                "Gemini could not complete the database lookup. "
+                                "Please try a narrower question."
+                            )
+                            response = None
+
+            if response is not None:
+                answer = response.text
+                if not answer:
+                    st.sidebar.error(
+                        "Gemini returned an empty response. Please try again."
+                    )
+                else:
+                    st.session_state.gemini_messages.extend(
+                        [
+                            {"role": "user", "content": prompt},
+                            {"role": "assistant", "content": answer},
+                        ]
+                    )
+                    st.rerun()
+        except APIError as error:
+            st.sidebar.error(f"Gemini request failed: {error}")
 
 if len(date_selection) != 2:
     st.info("Select both a start and end date to display the dashboard.")
@@ -677,11 +1005,17 @@ components.html(
     HERO_HTML.replace("__INK__", THEME["ink"])
     .replace("__MUTED__", THEME["muted"])
     .replace("__SURFACE__", THEME["surface"])
-    .replace("__SURFACE2__", "#16223a" if dark_mode else "#eef3ff")
+    .replace("__SURFACE2__", "#16223a" if dark_mode else "#557bb7")
     .replace("__BORDER__", THEME["border"])
     .replace("__SHADOW__", THEME["shadow"])
     .replace("__CHIP__", "rgba(255,255,255,.06)" if dark_mode else "rgba(255,255,255,.7)")
-    .replace("__DARK__", "true" if dark_mode else "false"),
+    .replace("__DARK__", "true" if dark_mode else "false")
+    .replace("#3867f4", COLORS["primary"])
+    .replace("#12a594", COLORS["blue"])
+    .replace("rgba(56,103,244", "rgba(255,75,75")
+    .replace("rgba(18,165,148", "rgba(65,106,175")
+    .replace("rgba(56, 103, 244", "rgba(255, 75, 75")
+    .replace("rgba(18, 165, 148", "rgba(65, 106, 175"),
     height=246,
     scrolling=False,
 )
@@ -720,7 +1054,7 @@ trend_figure.add_trace(
         name="Weekly sales",
         line=dict(color=COLORS["blue"], width=2),
         fill="tozeroy",
-        fillcolor="rgba(56, 103, 244, 0.08)",
+        fillcolor="rgba(255, 75, 75, 0.08)",
         hovertemplate="%{x|%b %d, %Y}<br>$%{y:,.0f}<extra>Weekly sales</extra>",
     )
 )
@@ -730,7 +1064,7 @@ trend_figure.add_trace(
         y=weekly_sales["4-week average"],
         mode="lines",
         name="4-week average",
-        line=dict(color=COLORS["teal"], width=3),
+        line=dict(color=COLORS["primary"], width=3),
         hovertemplate="%{x|%b %d, %Y}<br>$%{y:,.0f}<extra>4-week average</extra>",
     )
 )
@@ -788,7 +1122,7 @@ with right_column:
         color="Week_Type",
         color_discrete_map={
             "Regular week": COLORS["blue"],
-            "Holiday week": COLORS["teal"],
+            "Holiday week": COLORS["primary"],
         },
         text="Average_Sales",
         labels={"Week_Type": "Week type", "Average_Sales": "Average weekly sales ($)"},
@@ -817,7 +1151,7 @@ factor_figure = px.scatter(
     color="Week_Type",
     color_discrete_map={
         "Regular week": COLORS["blue"],
-        "Holiday week": COLORS["teal"],
+        "Holiday week": COLORS["primary"],
     },
     hover_data={"Store": True, "Date": "|%b %d, %Y", "Weekly_Sales": ":$,.0f"},
     labels={
@@ -881,7 +1215,7 @@ forecast_figure.add_trace(
         mode="lines",
         line=dict(width=0),
         fill="tonexty",
-        fillcolor="rgba(56, 103, 244, 0.14)",
+        fillcolor="rgba(255, 75, 75, 0.14)",
         name="80% confidence interval",
         hoverinfo="skip",
     )
@@ -1144,4 +1478,15 @@ FX_JS = """
 })();
 </script>
 """
-components.html(FX_JS.replace("__DARK__", "true" if dark_mode else "false"), height=0)
+components.html(
+    FX_JS.replace("__DARK__", "true" if dark_mode else "false")
+    .replace("0x3867f4", "0xff4b4b")
+    .replace("0x12a594", "0x416aaf")
+    .replace("#3867f4", COLORS["primary"])
+    .replace("#12a594", COLORS["blue"])
+    .replace("rgba(56,103,244", "rgba(255,75,75")
+    .replace("rgba(18,165,148", "rgba(65,106,175")
+    .replace("rgba(56, 103, 244", "rgba(255, 75, 75")
+    .replace("rgba(18, 165, 148", "rgba(65, 106, 175"),
+    height=0,
+)
