@@ -209,19 +209,44 @@ st.markdown(
         background: linear-gradient(135deg, #3867f4, #12a594) !important;
         color: #ffffff !important;
     }
-    [data-testid="stSidebar"] [data-testid="stChatInput"] textarea {
-        background: __SURFACE__ !important;
-        border-color: __INPUT_BORDER__ !important;
+    .st-key-gemini_chat_form [data-testid="stForm"] {
+        padding: 5px 6px 5px 12px;
+        background: linear-gradient(90deg, #416AAF 0 30px, __SURFACE__ 30px);
+        border: 2px solid #416AAF;
+        border-radius: 34px;
+    }
+    .st-key-gemini_chat_form [data-testid="stForm"] [data-testid="stHorizontalBlock"] {
+        align-items: center;
+        gap: 4px;
+    }
+    .st-key-gemini_chat_form [data-baseweb="textarea"] > div {
+        background: transparent !important;
+        border: 0 !important;
+        box-shadow: none !important;
+    }
+    .st-key-gemini_chat_form textarea {
+        min-height: 76px;
+        padding: 10px 0 10px 12px !important;
+        background: transparent !important;
         color: __INK__ !important;
         -webkit-text-fill-color: __INK__ !important;
+        font-size: 1.15rem !important;
+        line-height: 1.35 !important;
+        resize: none !important;
     }
-    [data-testid="stSidebar"] [data-testid="stChatInput"] button {
+    .st-key-gemini_chat_form textarea::placeholder {
+        color: __INK__ !important;
+        opacity: 1;
+    }
+    .st-key-gemini_chat_form [data-testid="stFormSubmitButton"] button {
+        min-height: 72px;
+        padding: 0;
         background: linear-gradient(135deg, #3867f4, #12a594) !important;
         color: #ffffff !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stChatInput"] button svg {
-        fill: #ffffff !important;
-        color: #ffffff !important;
+        border: 0 !important;
+        border-radius: 18px !important;
+        font-size: 1.8rem !important;
+        line-height: 1 !important;
     }
     [data-testid="stSidebar"] [data-testid="stChatMessage"] {
         background: __GLASS__ !important;
@@ -689,15 +714,28 @@ selected_factor = st.sidebar.selectbox(
 )
 
 st.sidebar.markdown("### ♊ Gemini assistant")
-with st.sidebar.container(height=260, border=False):
-    for message in st.session_state.get("gemini_messages", []):
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
 if "gemini_messages" not in st.session_state:
     st.session_state.gemini_messages = []
 
-if prompt := st.sidebar.chat_input("Ask Gemini anything...", key="gemini_chat_input"):
+with st.sidebar.form("gemini_chat_form", clear_on_submit=True):
+    prompt_column, send_column = st.columns([0.82, 0.18], gap="small")
+    with prompt_column:
+        prompt = st.text_area(
+            "Ask Gemini anything...",
+            key="gemini_chat_prompt",
+            placeholder="Ask Gemini anything...",
+            label_visibility="collapsed",
+            height=82,
+        )
+    with send_column:
+        submitted = st.form_submit_button("➤", use_container_width=True)
+
+with st.sidebar.container(height=260, border=False):
+    for message in st.session_state.gemini_messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+if submitted and prompt.strip():
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
     except (KeyError, FileNotFoundError):
