@@ -90,6 +90,7 @@ st.markdown(
         border-right: 1px solid __BORDER__;
         z-index: 3;
     }
+    [data-testid="stSidebarResizeHandle"] { display: none !important; }
     [data-testid="stSidebar"] > div:first-child { padding-top: 1.2rem; }
 
     /* ---------- Dark mode toggle: always fully visible ---------- */
@@ -210,43 +211,108 @@ st.markdown(
         color: #ffffff !important;
     }
     .st-key-gemini_chat_form [data-testid="stForm"] {
-        padding: 5px 6px 5px 12px;
-        background: linear-gradient(90deg, #416AAF 0 30px, __SURFACE__ 30px);
-        border: 2px solid #416AAF;
-        border-radius: 34px;
+        padding: 5px 8px;
+        background: #f7faff;
+        border: 1px solid #cbd8f0;
+        border-radius: 999px;
+        box-shadow: 0 2px 8px rgba(30, 64, 120, .08);
+        transition: border-color .2s ease, box-shadow .2s ease;
+    }
+    .st-key-gemini_chat_form [data-testid="stForm"]:focus-within {
+        border-color: #6388e8;
+        box-shadow: 0 0 0 3px rgba(56, 103, 244, .12),
+            0 4px 12px rgba(30, 64, 120, .1);
     }
     .st-key-gemini_chat_form [data-testid="stForm"] [data-testid="stHorizontalBlock"] {
+        display: grid !important;
+        grid-template-columns: 42px minmax(0, 1fr) 38px;
         align-items: center;
-        gap: 4px;
+        gap: 6px;
     }
-    .st-key-gemini_chat_form [data-baseweb="textarea"] > div {
+    .st-key-gemini_chat_form [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+        width: auto !important;
+        min-width: 0 !important;
+        flex: initial !important;
+    }
+    .st-key-gemini_chat_form .gemini-search-icons {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        width: 42px;
+        height: 38px;
+    }
+    .st-key-gemini_chat_form .gemini-search-icons svg {
+        display: block;
+        flex: 0 0 auto;
+    }
+    .st-key-gemini_chat_form [data-baseweb="input"] > div {
         background: transparent !important;
         border: 0 !important;
         box-shadow: none !important;
+        min-height: 38px !important;
     }
-    .st-key-gemini_chat_form textarea {
-        min-height: 76px;
-        padding: 10px 0 10px 12px !important;
+    .st-key-gemini_chat_form [data-baseweb="input"] input {
+        height: 38px !important;
+        min-height: 38px !important;
+        padding: 8px 0 !important;
         background: transparent !important;
         color: __INK__ !important;
         -webkit-text-fill-color: __INK__ !important;
-        font-size: 1.15rem !important;
-        line-height: 1.35 !important;
-        resize: none !important;
+        font-size: .9rem !important;
+        font-weight: 500 !important;
+        line-height: 1.4 !important;
     }
-    .st-key-gemini_chat_form textarea::placeholder {
-        color: __INK__ !important;
+    .st-key-gemini_chat_form [data-baseweb="input"] input::placeholder {
+        color: #71809a !important;
+        -webkit-text-fill-color: #71809a !important;
         opacity: 1;
     }
     .st-key-gemini_chat_form [data-testid="stFormSubmitButton"] button {
-        min-height: 72px;
-        padding: 0;
-        background: linear-gradient(135deg, #3867f4, #12a594) !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 38px !important;
+        min-width: 38px !important;
+        height: 38px;
+        min-height: 38px;
+        padding: 0 !important;
+        background: #7546d8 !important;
         color: #ffffff !important;
         border: 0 !important;
-        border-radius: 18px !important;
-        font-size: 1.8rem !important;
-        line-height: 1 !important;
+        border-radius: 50% !important;
+        box-shadow: 0 2px 5px rgba(92, 54, 170, .22);
+        font-size: 0 !important;
+        transition: transform .18s ease, background-color .18s ease, box-shadow .18s ease;
+    }
+    .st-key-gemini_chat_form [data-testid="stFormSubmitButton"] button::after {
+        content: "➜";
+        font-size: 1.15rem;
+        line-height: 1;
+    }
+    .st-key-gemini_chat_form [data-testid="stFormSubmitButton"] button:hover {
+        background: #6337c4 !important;
+        box-shadow: 0 3px 8px rgba(92, 54, 170, .3);
+        transform: translateX(1px);
+    }
+    @media (max-width: 420px) {
+        .st-key-gemini_chat_form [data-testid="stForm"] {
+            padding: 4px 6px;
+        }
+        .st-key-gemini_chat_form [data-testid="stForm"] [data-testid="stHorizontalBlock"] {
+            grid-template-columns: 38px minmax(0, 1fr) 36px;
+            gap: 4px;
+        }
+        .st-key-gemini_chat_form .gemini-search-icons {
+            width: 38px;
+            gap: 3px;
+        }
+        .st-key-gemini_chat_form [data-testid="stFormSubmitButton"] button {
+            width: 36px !important;
+            min-width: 36px !important;
+            height: 36px;
+            min-height: 36px;
+        }
     }
     [data-testid="stSidebar"] [data-testid="stChatMessage"] {
         background: __GLASS__ !important;
@@ -718,19 +784,35 @@ if "gemini_messages" not in st.session_state:
     st.session_state.gemini_messages = []
 
 with st.sidebar.form("gemini_chat_form", clear_on_submit=True):
-    prompt_column, send_column = st.columns([0.82, 0.18], gap="small")
+    logo_column, prompt_column, send_column = st.columns([0.18, 0.55, 0.20], gap="small")
+    with logo_column:
+        st.markdown(
+            """
+            <div class="gemini-search-icons" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none"
+                     stroke="#5271b8" stroke-width="2" stroke-linecap="round">
+                    <circle cx="10.8" cy="10.8" r="6.3"></circle>
+                    <path d="m15.5 15.5 4 4"></path>
+                </svg>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="#7546d8">
+                    <path d="M12 2.8c1.1 5.2 2.9 7 8.2 8.2-5.3 1.1-7.1 2.9-8.2 8.2-1.1-5.3-2.9-7.1-8.2-8.2C9.1 9.8 10.9 8 12 2.8Z"></path>
+                    <path d="M19.2 2.8c.4 1.8 1 2.4 2.8 2.8-1.8.4-2.4 1-2.8 2.8-.4-1.8-1-2.4-2.8-2.8 1.8-.4 2.4-1 2.8-2.8Z"></path>
+                </svg>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     with prompt_column:
-        prompt = st.text_area(
-            "Ask Gemini anything...",
+        prompt = st.text_input(
+            "Ask Gemini...",
             key="gemini_chat_prompt",
-            placeholder="Ask Gemini anything...",
+            placeholder="Ask Gemini...",
             label_visibility="collapsed",
-            height=82,
         )
     with send_column:
-        submitted = st.form_submit_button("➤", use_container_width=True)
+        submitted = st.form_submit_button("🔎", use_container_width=True)
 
-with st.sidebar.container(height=260, border=False):
+with st.sidebar.container(height=220, border=False):
     for message in st.session_state.gemini_messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
